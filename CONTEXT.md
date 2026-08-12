@@ -1,15 +1,13 @@
 # TabletDisplayAndroid
 
-Android-приёмник системы, превращающей планшет в дополнительный монитор Windows 11 по USB/ADB.
+Android-приёмник для использования планшета как дополнительного монитора Windows 11 по USB/ADB.
 
 - Парный проект: `C:\Users\ka\Documents\c-plus-plus\TabletDisplayWindows`.
-- MVP: H.264 1280×800/1920×1200, 30/60 FPS, fullscreen Surface, touch → Windows.
-- Стек: Kotlin, Android API 26+, MediaCodec, SurfaceView, TCP loopback, Gradle 9.2.1/AGP 9.0.1.
-- Listener: только `127.0.0.1:27183`; Windows подключается через `adb forward`.
-- Протокол: синхронная копия `doc/PROTOCOL.md`; односторонние изменения запрещены.
-- Сборка/тест: `build.cmd`, `test.cmd`; JDK/SDK/Gradle находятся в `C:\tools`.
-- Готово: lifecycle server, handshake/PING, strict parser/golden tests, VIDEO_CONFIG/VIDEO_FRAME, MediaCodec → Surface.
-- Decoder предпочитает аппаратный AVC, имеет software fallback и привязывает входные PTS к локальным монотонным часам Android.
-- Проверено на Lenovo TB-X606F (Android 10, 1920×1200@60): synthetic AVC Baseline 1280×800 декодирован аппаратно; PixelCopy обнаружил 53 цвета.
-- Далее: bounded video queue/backpressure, keyframe recovery, длительный reconnect-тест, touch и lifecycle hardening.
+- Устройство MVP: Lenovo TB-X606F, Android 10, 1920×1200@60.
+- Стек: Kotlin, Android SDK 36, minSdk 26, Gradle 9.2.1, JDK 17, `SurfaceView`, `MediaCodec`.
+- Сеть: только `127.0.0.1:27183`; Windows подключается через `adb forward`; protocol v1 в `doc/PROTOCOL.md`.
+- Команды: `build.cmd`, `test.cmd`; APK — `app\build\outputs\apk\debug\app-debug.apk`.
+- Готово: loopback server, strict parser/session, VIDEO_CONFIG/VIDEO_FRAME, AVC MediaCodec → Surface, lifecycle/reconnect-to-listen.
+- Проверено: synthetic fixture и 150 Media Foundation H.264 кадров 1280×800; аппаратный `OMX.MTK.VIDEO.DECODER.AVC`, средняя codec latency ≈9,7 мс.
+- Далее: bounded queue/keyframe recovery, IddCx desktop stream, touch и reconnect.
 - Подробный план: [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md).

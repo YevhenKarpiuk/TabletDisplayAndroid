@@ -1,6 +1,6 @@
 # План реализации TabletDisplayAndroid
 
-> Статус 2026-08-12: parser, loopback session, VIDEO_CONFIG/VIDEO_FRAME и MediaCodec → Surface проверены сквозным synthetic H.264 тестом. Следующий основной шаг — bounded queue/keyframe recovery, затем touch.
+> Статус 2026-08-12: protocol/MediaCodec → Surface проверены synthetic fixture и 150-кадровым Media Foundation H.264 stream; аппаратный MTK decoder получил все кадры. Следующий шаг — bounded queue/keyframe recovery и реальный IddCx desktop stream, затем touch.
 
 ## 1. Цель и границы MVP
 

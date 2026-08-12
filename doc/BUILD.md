@@ -27,6 +27,7 @@ C:\tools\android\sdk\platform-tools\adb.exe shell am start -W -n com.tabletdispl
 - обработка `VIDEO_CONFIG`/`VIDEO_FRAME`, MediaCodec AVC с прямым выводом в Surface;
 - аппаратный decoder выбирается первым, software decoder используется как fallback;
 - входные PTS переводятся в локальную монотонную шкалу Android перед выводом;
-- после disconnect приложение снова слушает порт.
+- после disconnect приложение снова слушает порт;
+- проверен поток software H264 MFT Windows: 150 кадров 1280×800 через аппаратный MTK decoder, средняя codec latency ≈9,7 мс.
 
-На Lenovo TB-X606F аппаратно проверен synthetic AVC Baseline 1280×800; PixelCopy вернул 53 различных цвета. Bounded queues, keyframe recovery и touch ещё не реализованы.
+На Lenovo TB-X606F аппаратно проверены synthetic AVC Baseline и динамический Media Foundation H.264 stream 1280×800. PixelCopy synthetic-кадра вернул 53 цвета; media metrics для MF-потока показали 150 decoder samples. Bounded queues, keyframe recovery и touch ещё не реализованы.
