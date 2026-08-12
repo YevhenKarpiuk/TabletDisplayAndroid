@@ -4,6 +4,7 @@
 local.properties
 build/
 app/build/
+dist/
 captures/
 *.iml
 *.log
