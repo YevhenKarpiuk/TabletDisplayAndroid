@@ -4,6 +4,7 @@
     <string name="status_waiting">Ожидание USB-подключения</string>
     <string name="status_connected">USB подключён, согласование…</string>
     <string name="status_ready">Соединение готово</string>
+    <string name="status_streaming">Видеопоток активен</string>
     <string name="status_error">Ошибка соединения: %1$s</string>
     <string name="status_stopped">Сервер остановлен</string>
 </resources>

@@ -1,5 +1,7 @@
 # План реализации TabletDisplayAndroid
 
+> Статус 2026-08-12: parser, loopback session, VIDEO_CONFIG/VIDEO_FRAME и MediaCodec → Surface проверены сквозным synthetic H.264 тестом. Следующий основной шаг — bounded queue/keyframe recovery, затем touch.
+
 ## 1. Цель и границы MVP
 
 Создать Android-приложение, которое по USB/ADB принимает H.264-поток виртуального монитора Windows, аппаратно декодирует его непосредственно в `Surface` и отправляет touch-события обратно Windows.

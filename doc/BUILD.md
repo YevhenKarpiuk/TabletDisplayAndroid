@@ -3,10 +3,8 @@
 ## Зафиксированное окружение
 
 - Android Gradle Plugin `9.0.1` со встроенным Kotlin.
-- Gradle wrapper `9.2.1`.
-- JDK `17.0.13` из `C:\tools\java\jdk-17.0.13`.
-- Android SDK из `C:\tools\android\sdk`.
-- Android Build Tools `36.1.0`.
+- Gradle `9.2.1`; JDK `17.0.13`.
+- Android SDK `C:\tools\android\sdk`, Build Tools `36.1.0`.
 - `compileSdk 36`, `targetSdk 36`, `minSdk 26`.
 
 ## Команды
@@ -20,17 +18,15 @@ C:\tools\android\sdk\platform-tools\adb.exe install -r app\build\outputs\apk\deb
 C:\tools\android\sdk\platform-tools\adb.exe shell am start -W -n com.tabletdisplay/.MainActivity
 ```
 
-`build.cmd` и `test.cmd` используют portable Gradle из `C:\tools\gradle\gradle-9.2.1`, JDK/SDK из `C:\tools` и существующий кэш `C:\Users\ka\.gradle`. Если portable Gradle отсутствует, используется wrapper. Android Studio не требуется.
+Скрипты используют portable Gradle/JDK/SDK из `C:\tools` и кэш `C:\Users\ka\.gradle`; Android Studio не требуется.
 
-## Состав каркаса
+## Текущее состояние
 
-- полноэкранная `SurfaceView` и статус ожидания;
-- loopback-only `ServerSocket` на `127.0.0.1:27183`;
-- lifecycle-сервер с повторным ожиданием соединения и JVM-тесты handshake;
-- строгий incremental parser wire-протокола и общие с Windows golden-векторы;
-- lifecycle-заготовка H.264 `MediaCodec`;
-- модель нормализованного touch-события.
+- полноэкранная `SurfaceView` и lifecycle-aware loopback server на `127.0.0.1:27183`;
+- handshake, `DISPLAY_INFO`, `PING/PONG`, strict incremental parser и общие golden vectors;
+- обработка `VIDEO_CONFIG`/`VIDEO_FRAME`, MediaCodec AVC с прямым выводом в Surface;
+- аппаратный decoder выбирается первым, software decoder используется как fallback;
+- входные PTS переводятся в локальную монотонную шкалу Android перед выводом;
+- после disconnect приложение снова слушает порт.
 
-Приложение запускает loopback-сервер вместе с Activity, выполняет `HELLO_ACK`, отправляет `DISPLAY_INFO`, отвечает на `PING` и после disconnect снова переходит в ожидание. MediaCodec, bounded video queues и touch ещё не связаны с transport.
-
-Разрешение `INTERNET` требуется Android для IP-сокета; сам listener жёстко привязан к loopback и не принимает соединения из LAN.
+На Lenovo TB-X606F аппаратно проверен synthetic AVC Baseline 1280×800; PixelCopy вернул 53 различных цвета. Bounded queues, keyframe recovery и touch ещё не реализованы.

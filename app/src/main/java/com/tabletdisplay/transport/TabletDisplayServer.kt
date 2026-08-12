@@ -10,6 +10,8 @@ import com.tabletdisplay.protocol.ProtocolConstants
 import com.tabletdisplay.protocol.ProtocolException
 import com.tabletdisplay.protocol.WireMessage
 import com.tabletdisplay.protocol.WireProtocol
+import com.tabletdisplay.video.VideoSession
+import com.tabletdisplay.video.VideoSink
 import java.io.Closeable
 import java.io.EOFException
 import java.net.Socket
@@ -21,12 +23,14 @@ enum class ServerStatus {
     LISTENING,
     CONNECTED,
     READY,
+    STREAMING,
     ERROR,
     STOPPED
 }
 
 class TabletDisplayServer(
     private val displayInfo: AndroidDisplayInfo,
+    private val videoSink: VideoSink,
     private val onStatus: (ServerStatus, String?) -> Unit
 ) : Closeable {
     @Volatile
@@ -87,58 +91,68 @@ class TabletDisplayServer(
         val buffer = ByteArray(16 * 1024)
         var handshakeComplete = false
         var outgoingSequence = 1L
+        val videoSession = VideoSession(videoSink) {
+            publish(ServerStatus.STREAMING)
+        }
 
-        while (running) {
-            val count = try {
-                input.read(buffer)
-            } catch (exception: SocketTimeoutException) {
-                throw SocketTimeoutException("Protocol idle timeout")
-            }
-            if (count < 0) throw EOFException("Windows host disconnected")
-
-            for (message in decoder.feed(buffer, 0, count)) {
-                if (!handshakeComplete) {
-                    val hello = HandshakeProtocol.parseHello(message)
-                    val status = HandshakeProtocol.negotiationStatus(hello)
-                    send(
-                        output,
-                        HandshakeProtocol.createHelloAck(
-                            outgoingSequence++,
-                            nowUs(),
-                            hello,
-                            positiveNonce(),
-                            status
-                        )
-                    )
-                    if (status != HandshakeProtocol.STATUS_OK) return
-                    send(
-                        output,
-                        HandshakeProtocol.createDisplayInfo(
-                            outgoingSequence++,
-                            nowUs(),
-                            displayInfo
-                        )
-                    )
-                    socket.soTimeout = hello.idleTimeoutMs
-                    handshakeComplete = true
-                    publish(ServerStatus.READY)
-                    continue
+        try {
+            while (running) {
+                val count = try {
+                    input.read(buffer)
+                } catch (exception: SocketTimeoutException) {
+                    throw SocketTimeoutException("Protocol idle timeout")
                 }
+                if (count < 0) throw EOFException("Windows host disconnected")
 
-                when (MessageType.fromCode(message.header.messageType)) {
-                    MessageType.PING -> send(
-                        output,
-                        HandshakeProtocol.createPong(outgoingSequence++, nowUs(), message)
-                    )
-                    MessageType.VIDEO_CONFIG,
-                    MessageType.VIDEO_FRAME -> Unit
-                    MessageType.ERROR -> return
-                    else -> throw ProtocolException(
-                        com.tabletdisplay.protocol.ProtocolErrorKind.INVALID_PAYLOAD,
-                        "Unexpected Windows-to-Android message"
-                    )
+                for (message in decoder.feed(buffer, 0, count)) {
+                    if (!handshakeComplete) {
+                        val hello = HandshakeProtocol.parseHello(message)
+                        val status = HandshakeProtocol.negotiationStatus(hello)
+                        send(
+                            output,
+                            HandshakeProtocol.createHelloAck(
+                                outgoingSequence++,
+                                nowUs(),
+                                hello,
+                                positiveNonce(),
+                                status
+                            )
+                        )
+                        if (status != HandshakeProtocol.STATUS_OK) return
+                        send(
+                            output,
+                            HandshakeProtocol.createDisplayInfo(
+                                outgoingSequence++,
+                                nowUs(),
+                                displayInfo
+                            )
+                        )
+                        socket.soTimeout = hello.idleTimeoutMs
+                        handshakeComplete = true
+                        publish(ServerStatus.READY)
+                        continue
+                    }
+
+                    if (videoSession.accept(message)) continue
+                    when (MessageType.fromCode(message.header.messageType)) {
+                        MessageType.PING -> send(
+                            output,
+                            HandshakeProtocol.createPong(
+                                outgoingSequence++,
+                                nowUs(),
+                                message
+                            )
+                        )
+                        MessageType.ERROR -> return
+                        else -> throw ProtocolException(
+                            com.tabletdisplay.protocol.ProtocolErrorKind.INVALID_PAYLOAD,
+                            "Unexpected Windows-to-Android message"
+                        )
+                    }
                 }
             }
+        } finally {
+            videoSession.close()
         }
     }
 

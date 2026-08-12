@@ -1,11 +1,10 @@
 # TabletDisplayAndroid
 
-Android-приёмник TabletDisplay. Каркас содержит одно Kotlin-приложение с полноэкранной Surface, состояниями сеанса, loopback TCP transport и заготовкой MediaCodec H.264 decoder.
-
-Сборка debug APK:
+Android-приёмник TabletDisplay с loopback TCP transport и аппаратным H.264 MediaCodec, выводящим кадры напрямую в полноэкранную Surface.
 
 ```cmd
 build.cmd
+test.cmd
 ```
 
 APK: `app\build\outputs\apk\debug\app-debug.apk`.
