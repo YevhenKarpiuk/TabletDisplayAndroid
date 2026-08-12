@@ -1,11 +1,7 @@
 package com.tabletdisplay.ui
 
 import android.content.Context
-import android.graphics.Color
 import android.view.SurfaceView
 
-class DisplaySurface(context: Context) : SurfaceView(context) {
-    init {
-        setBackgroundColor(Color.BLACK)
-    }
-}
+// The parent is black; a background on SurfaceView can cover MediaCodec's Surface layer.
+class DisplaySurface(context: Context) : SurfaceView(context)

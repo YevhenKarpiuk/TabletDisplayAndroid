@@ -1,6 +1,6 @@
 # План реализации TabletDisplayAndroid
 
-> Статус 2026-08-12: protocol/MediaCodec → Surface проверены synthetic fixture и 150-кадровым Media Foundation H.264 stream; аппаратный MTK decoder получил все кадры. Следующий шаг — bounded queue/keyframe recovery и реальный IddCx desktop stream, затем touch.
+> Статус 2026-08-12: аппаратный MTK decoder отображает synthetic/MF H.264 и реальный DXGI desktop stream 1280×800. Устранено перекрытие видео непрозрачным background-слоем `SurfaceView`. Следующий шаг — bounded queue/keyframe recovery и IddCx desktop stream, затем touch.
 
 ## 1. Цель и границы MVP
 
