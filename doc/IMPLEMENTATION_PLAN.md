@@ -1,6 +1,6 @@
 # План реализации TabletDisplayAndroid
 
-> Статус 2026-08-12: аппаратный MTK decoder отображает synthetic/MF H.264 и реальный DXGI desktop stream 1280×800. Устранено перекрытие видео непрозрачным background-слоем `SurfaceView`. Следующий шаг — bounded queue/keyframe recovery и IddCx desktop stream, затем touch.
+> Статус 2026-08-13: виртуальный IddCx-дисплей 1280×800@60 аппаратно декодируется на планшете; реализованы одно-кадровый render pacing и асинхронная передача single-touch. Следующий шаг — проверка точности tap/drag и длительный reconnect/soak-тест, затем восстановление keyframe и политика переполнения очередей.
 
 ## 1. Цель и границы MVP
 
