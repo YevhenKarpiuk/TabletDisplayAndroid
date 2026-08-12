@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.Surface
 import com.tabletdisplay.protocol.ProtocolConstants
 import java.nio.ByteBuffer
+import kotlin.math.max
 
 class H264Decoder(private val surface: Surface) : VideoSink {
     private var codec: MediaCodec? = null
@@ -16,13 +17,17 @@ class H264Decoder(private val surface: Surface) : VideoSink {
     private var usingSoftwareDecoder = false
     private var sourceTimestampOriginUs: Long? = null
     private var localTimestampOriginUs = 0L
+    private var renderLeadTimeUs = 0L
 
     @Synchronized
     override fun configure(config: VideoConfig) {
         require(config.width > 0 && config.height > 0)
+        require(config.fpsNumerator > 0 && config.fpsDenominator > 0)
         releaseCodec()
         configuration = config
         sourceTimestampOriginUs = null
+        renderLeadTimeUs =
+            1_000_000L * config.fpsDenominator / config.fpsNumerator
         startCodec(config, softwareDecoderName = null)
     }
 
@@ -137,7 +142,7 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         val sourceOrigin = sourceTimestampOriginUs
         if (sourceOrigin == null) {
             sourceTimestampOriginUs = sourceTimestampUs
-            localTimestampOriginUs = System.nanoTime() / 1_000L
+            localTimestampOriginUs = System.nanoTime() / 1_000L + renderLeadTimeUs
             return localTimestampOriginUs
         }
         return localTimestampOriginUs + (sourceTimestampUs - sourceOrigin).coerceAtLeast(0L)
@@ -159,7 +164,13 @@ class H264Decoder(private val surface: Surface) : VideoSink {
                     val isFrame = outputInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
                         outputInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM == 0
                     if (isFrame) {
-                        current.releaseOutputBuffer(outputIndex, System.nanoTime())
+                        // Keep one frame of headroom and let SurfaceFlinger present at the
+                        // source cadence. Late frames are still rendered immediately.
+                        val renderTimeNs = max(
+                            outputInfo.presentationTimeUs * 1_000L,
+                            System.nanoTime()
+                        )
+                        current.releaseOutputBuffer(outputIndex, renderTimeNs)
                     } else {
                         current.releaseOutputBuffer(outputIndex, false)
                     }
