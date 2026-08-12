@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "android: assemble debug",
+      "type": "process",
+      "command": "${workspaceFolder}\\build.cmd",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$gradle"
+    },
+    {
+      "label": "android: unit tests",
+      "type": "process",
+      "command": "${workspaceFolder}\\gradlew.bat",
+      "args": ["--no-daemon", ":app:testDebugUnitTest"],
+      "options": {
+        "env": {
+          "JAVA_HOME": "C:\\tools\\java\\jdk-17.0.13",
+          "ANDROID_HOME": "C:\\tools\\android\\sdk"
+        }
+      },
+      "group": "test",
+      "problemMatcher": "$gradle"
+    },
+    {
+      "label": "android: install debug",
+      "type": "process",
+      "command": "C:\\tools\\android\\sdk\\platform-tools\\adb.exe",
+      "args": ["install", "-r", "${workspaceFolder}\\app\\build\\outputs\\apk\\debug\\app-debug.apk"],
+      "dependsOn": "android: assemble debug",
+      "problemMatcher": []
+    }
+  ]
+}
