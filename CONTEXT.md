@@ -11,4 +11,4 @@ Android-часть системы, превращающей планшет в д
 - Приоритеты: низкая задержка, bounded buffers, корректный reconnect, отсутствие копирования декодированных кадров через Kotlin/Java.
 - План: [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md).
 
-Статус: каркас проверен в Debug/Release: Surface UI, loopback transport, session state, MediaCodec lifecycle и touch model собираются; JVM-тесты проходят. Wire parser и сквозной streaming ещё не реализованы.
+Статус: каркас проверен в Debug/Release. Wire-протокол v1 зафиксирован в `doc/PROTOCOL.md`; строгий incremental parser и общие golden-векторы находятся в `protocol/golden` и покрыты JVM-тестами. Сквозной streaming ещё не подключён.

@@ -11,14 +11,7 @@
     {
       "label": "android: unit tests",
       "type": "process",
-      "command": "${workspaceFolder}\\gradlew.bat",
-      "args": ["--no-daemon", ":app:testDebugUnitTest"],
-      "options": {
-        "env": {
-          "JAVA_HOME": "C:\\tools\\java\\jdk-17.0.13",
-          "ANDROID_HOME": "C:\\tools\\android\\sdk"
-        }
-      },
+      "command": "${workspaceFolder}\\test.cmd",
       "group": "test",
       "problemMatcher": "$gradle"
     },
