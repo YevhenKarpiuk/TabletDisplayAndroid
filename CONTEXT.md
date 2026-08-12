@@ -11,4 +11,4 @@ Android-часть системы, превращающей планшет в д
 - Приоритеты: низкая задержка, bounded buffers, корректный reconnect, отсутствие копирования декодированных кадров через Kotlin/Java.
 - План: [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md).
 
-Статус: каркас проверен в Debug/Release. Wire-протокол v1 зафиксирован в `doc/PROTOCOL.md`; строгий incremental parser и общие golden-векторы находятся в `protocol/golden` и покрыты JVM-тестами. Сквозной streaming ещё не подключён.
+Статус: wire-протокол v1 и parser покрыты golden-тестами. Activity запускает loopback-сервер, выполняет handshake, сообщает параметры display и отвечает PONG; проверено по USB на Lenovo TB-X606F. MediaCodec streaming и touch ещё не подключены.

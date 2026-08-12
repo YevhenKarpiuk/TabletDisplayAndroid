@@ -22,6 +22,14 @@
       "args": ["install", "-r", "${workspaceFolder}\\app\\build\\outputs\\apk\\debug\\app-debug.apk"],
       "dependsOn": "android: assemble debug",
       "problemMatcher": []
+    },
+    {
+      "label": "android: launch",
+      "type": "process",
+      "command": "C:\\tools\\android\\sdk\\platform-tools\\adb.exe",
+      "args": ["shell", "am", "start", "-W", "-n", "com.tabletdisplay/.MainActivity"],
+      "dependsOn": "android: install debug",
+      "problemMatcher": []
     }
   ]
 }
