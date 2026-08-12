@@ -1,7 +1,10 @@
 package com.tabletdisplay.protocol
 
+import com.tabletdisplay.input.NormalizedTouchEvent
+import com.tabletdisplay.input.TouchAction
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.roundToInt
 
 object ProtocolCapabilities {
     const val H264_ANNEX_B = 1L shl 0
@@ -129,6 +132,38 @@ object HandshakeProtocol {
         return message(MessageType.PONG, sequence, timestampUs, payload)
     }
 
+    fun createTouch(
+        sequence: Long,
+        timestampUs: Long,
+        streamId: Long,
+        contactSequence: Long,
+        event: NormalizedTouchEvent
+    ): WireMessage {
+        require(streamId in 1..0xFFFF_FFFFL)
+        require(event.pointerId == 0)
+        require(contactSequence in 1..0xFFFF_FFFFL)
+        val action = when (event.action) {
+            TouchAction.DOWN -> 1
+            TouchAction.MOVE -> 2
+            TouchAction.UP -> 3
+            TouchAction.CANCEL -> 4
+        }
+        val buttons = if (event.action == TouchAction.DOWN || event.action == TouchAction.MOVE) 1 else 0
+        val payload = buffer(32).apply {
+            putInt(streamId.toInt())
+            putInt(0)
+            put(action.toByte())
+            put(buttons.toByte())
+            putShort(normalizeU16(event.x).toShort())
+            putShort(normalizeU16(event.y).toShort())
+            putShort(normalizeU16(event.pressure).toShort())
+            putInt(contactSequence.toInt())
+            putLong((event.timestampNanos / 1_000L).coerceAtLeast(1L))
+            putInt(0)
+        }.array()
+        return message(MessageType.TOUCH, sequence, timestampUs, payload)
+    }
+
     private fun message(
         type: MessageType,
         sequence: Long,
@@ -150,4 +185,7 @@ object HandshakeProtocol {
 
     private fun buffer(bytes: ByteArray): ByteBuffer =
         ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+
+    private fun normalizeU16(value: Float): Int =
+        (value.coerceIn(0f, 1f) * 65_535f).roundToInt().coerceIn(0, 65_535)
 }

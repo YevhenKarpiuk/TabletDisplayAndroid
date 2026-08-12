@@ -4,12 +4,15 @@ import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import com.tabletdisplay.protocol.AndroidDisplayInfo
+import com.tabletdisplay.input.NormalizedTouchEvent
+import com.tabletdisplay.input.TouchAction
 import com.tabletdisplay.transport.ServerStatus
 import com.tabletdisplay.transport.TabletDisplayServer
 import com.tabletdisplay.ui.DisplaySurface
@@ -35,6 +38,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         displaySurface = DisplaySurface(this).also {
             it.holder.addCallback(this)
+            it.setOnTouchListener { view, event ->
+                forwardTouch(view, event)
+            }
             root.addView(
                 it,
                 FrameLayout.LayoutParams(
@@ -59,6 +65,32 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             )
         )
         setContentView(root)
+    }
+
+    private fun forwardTouch(view: View, event: MotionEvent): Boolean {
+        val action = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> TouchAction.DOWN
+            MotionEvent.ACTION_MOVE -> TouchAction.MOVE
+            MotionEvent.ACTION_UP -> TouchAction.UP
+            MotionEvent.ACTION_CANCEL -> TouchAction.CANCEL
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_POINTER_UP -> return true
+            else -> return false
+        }
+        if (event.pointerCount == 0 || view.width <= 0 || view.height <= 0) return true
+        val x = (event.getX(0) / maxOf(1, view.width - 1)).coerceIn(0f, 1f)
+        val y = (event.getY(0) / maxOf(1, view.height - 1)).coerceIn(0f, 1f)
+        server?.sendTouch(
+            NormalizedTouchEvent(
+                action = action,
+                pointerId = 0,
+                x = x,
+                y = y,
+                timestampNanos = event.eventTime * 1_000_000L,
+                pressure = event.getPressure(0).coerceIn(0f, 1f)
+            )
+        )
+        return true
     }
 
     override fun onStart() {

@@ -1,5 +1,7 @@
 package com.tabletdisplay.protocol
 
+import com.tabletdisplay.input.NormalizedTouchEvent
+import com.tabletdisplay.input.TouchAction
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
@@ -41,6 +43,36 @@ class HandshakeProtocolTest {
             HandshakeProtocol.STATUS_MISSING_CAPABILITY,
             HandshakeProtocol.negotiationStatus(parsed)
         )
+    }
+
+    @Test
+    fun touchCoordinatesAreSerializedAsNormalizedU16() {
+        val touch = HandshakeProtocol.createTouch(
+            sequence = 4,
+            timestampUs = 20,
+            streamId = 1,
+            contactSequence = 7,
+            event = NormalizedTouchEvent(
+                TouchAction.DOWN,
+                pointerId = 0,
+                x = 0.5f,
+                y = 1f,
+                timestampNanos = 19_000,
+                pressure = 0.25f
+            )
+        )
+        WireProtocol.validatePayload(touch.header, touch.payload)
+        val payload = littleEndian(touch.payload)
+        assertEquals(1, payload.int)
+        assertEquals(0, payload.int)
+        assertEquals(1, payload.get().toInt())
+        assertEquals(1, payload.get().toInt())
+        assertEquals(32_768, payload.short.toInt() and 0xFFFF)
+        assertEquals(65_535, payload.short.toInt() and 0xFFFF)
+        assertEquals(16_384, payload.short.toInt() and 0xFFFF)
+        assertEquals(7, payload.int)
+        assertEquals(19L, payload.long)
+        assertEquals(0, payload.int)
     }
 
     private fun helloMessage(capabilities: Long = ProtocolCapabilities.ALL_V1): WireMessage {
