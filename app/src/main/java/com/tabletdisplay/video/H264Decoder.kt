@@ -26,8 +26,10 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         releaseCodec()
         configuration = config
         sourceTimestampOriginUs = null
-        renderLeadTimeUs =
-            1_000_000L * config.fpsDenominator / config.fpsNumerator
+        renderLeadTimeUs = renderLeadTimeUs(
+            config.fpsNumerator,
+            config.fpsDenominator
+        )
         startCodec(config, softwareDecoderName = null)
     }
 
@@ -41,6 +43,11 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, ProtocolConstants.MAX_ACCESS_UNIT_SIZE)
             setInteger(MediaFormat.KEY_FRAME_RATE, config.fpsNumerator / config.fpsDenominator)
             setInteger(MediaFormat.KEY_BIT_RATE, config.bitrate.toInt())
+            setInteger(MediaFormat.KEY_PRIORITY, 0)
+            setFloat(
+                MediaFormat.KEY_OPERATING_RATE,
+                config.fpsNumerator.toFloat() / config.fpsDenominator
+            )
             setByteBuffer("csd-0", ByteBuffer.wrap(parameterSets.first))
             setByteBuffer("csd-1", ByteBuffer.wrap(parameterSets.second))
         }
@@ -164,7 +171,7 @@ class H264Decoder(private val surface: Surface) : VideoSink {
                     val isFrame = outputInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
                         outputInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM == 0
                     if (isFrame) {
-                        // Keep one frame of headroom and let SurfaceFlinger present at the
+                        // Keep half a frame of headroom and let SurfaceFlinger present at the
                         // source cadence. Late frames are still rendered immediately.
                         val renderTimeNs = max(
                             outputInfo.presentationTimeUs * 1_000L,
@@ -259,4 +266,9 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         private const val INPUT_TIMEOUT_US = 5_000_000L
         private const val OUTPUT_TIMEOUT_US = 2_000_000L
     }
+}
+
+internal fun renderLeadTimeUs(fpsNumerator: Int, fpsDenominator: Int): Long {
+    require(fpsNumerator > 0 && fpsDenominator > 0)
+    return 1_000_000L * fpsDenominator / fpsNumerator / 2L
 }
