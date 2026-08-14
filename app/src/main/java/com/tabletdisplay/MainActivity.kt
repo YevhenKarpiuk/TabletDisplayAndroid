@@ -22,6 +22,7 @@ import com.tabletdisplay.video.H264Decoder
 @Suppress("DEPRECATION")
 class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var displaySurface: DisplaySurface
+    private lateinit var blackoutView: View
     private lateinit var statusView: TextView
     private var server: TabletDisplayServer? = null
     private var activityStarted = false
@@ -50,6 +51,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 )
             )
         }
+        blackoutView = View(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isClickable = true
+        }
+        root.addView(
+            blackoutView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
         statusView = TextView(this).apply {
             text = getString(R.string.status_waiting)
             setTextColor(Color.WHITE)
@@ -150,7 +162,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun showStatus(status: ServerStatus, detail: String?) {
         runOnUiThread {
-            statusView.visibility = if (status == ServerStatus.STREAMING) View.GONE else View.VISIBLE
+            val streaming = status == ServerStatus.STREAMING
+            blackoutView.visibility = if (streaming) View.GONE else View.VISIBLE
+            statusView.visibility = if (streaming) View.GONE else View.VISIBLE
             statusView.text = when (status) {
                 ServerStatus.LISTENING -> getString(R.string.status_waiting)
                 ServerStatus.CONNECTED -> getString(R.string.status_connected)
