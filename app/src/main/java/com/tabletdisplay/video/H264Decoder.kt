@@ -7,7 +7,6 @@ import android.util.Log
 import android.view.Surface
 import com.tabletdisplay.protocol.ProtocolConstants
 import java.nio.ByteBuffer
-import kotlin.math.max
 
 class H264Decoder(private val surface: Surface) : VideoSink {
     private var codec: MediaCodec? = null
@@ -171,13 +170,10 @@ class H264Decoder(private val surface: Surface) : VideoSink {
                     val isFrame = outputInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
                         outputInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM == 0
                     if (isFrame) {
-                        // Keep half a frame of headroom and let SurfaceFlinger present at the
-                        // source cadence. Late frames are still rendered immediately.
-                        val renderTimeNs = max(
-                            outputInfo.presentationTimeUs * 1_000L,
-                            System.nanoTime()
-                        )
-                        current.releaseOutputBuffer(outputIndex, renderTimeNs)
+                        // Input already arrives at the source cadence. Rendering on the next
+                        // display refresh avoids clock-drift between Windows timestamps and
+                        // Android's monotonic clock from accumulating queued Surface frames.
+                        current.releaseOutputBuffer(outputIndex, true)
                     } else {
                         current.releaseOutputBuffer(outputIndex, false)
                     }
