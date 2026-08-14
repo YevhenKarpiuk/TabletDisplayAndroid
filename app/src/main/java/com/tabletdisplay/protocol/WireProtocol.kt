@@ -207,7 +207,9 @@ object WireProtocol {
                 requirePayload(u32(payload, 0) != 0L && u32(payload, 4) != 0L, "VIDEO_CONFIG ids")
                 requirePayload(
                     (width == 1280 && height == 800) ||
-                        (width == 1920 && height == 1200),
+                        (width == 800 && height == 1280) ||
+                        (width == 1920 && height == 1200) ||
+                        (width == 1200 && height == 1920),
                     "VIDEO_CONFIG mode"
                 )
                 requirePayload(

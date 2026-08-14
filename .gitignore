@@ -6,5 +6,6 @@ build/
 app/build/
 dist/
 captures/
+signing/
 *.iml
 *.log

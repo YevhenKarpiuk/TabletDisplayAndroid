@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
@@ -118,17 +119,25 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun startServerIfReady() {
         if (!activityStarted || !displaySurface.holder.surface.isValid || server != null) return
         val displayMode = windowManager.defaultDisplay.mode
-        val width = maxOf(displayMode.physicalWidth, displayMode.physicalHeight)
-        val height = minOf(displayMode.physicalWidth, displayMode.physicalHeight)
+        val width = displaySurface.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val height = displaySurface.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        val maximumDimension = maxOf(displayMode.physicalWidth, displayMode.physicalHeight)
+        val rotation = when (windowManager.defaultDisplay.rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
         val displayInfo = AndroidDisplayInfo(
             width = width,
             height = height,
             densityDpi = resources.displayMetrics.densityDpi,
             refreshRateMilliHz = (displayMode.refreshRate * 1_000f).toInt(),
-            maxAvcWidth = width,
-            maxAvcHeight = height,
+            maxAvcWidth = maximumDimension,
+            maxAvcHeight = maximumDimension,
             maxAvcFps = 60,
-            profileMask = 0x07
+            profileMask = 0x07,
+            rotation = rotation
         )
         val decoder = H264Decoder(displaySurface.holder.surface)
         server = TabletDisplayServer(displayInfo, decoder, ::showStatus).also { it.start() }

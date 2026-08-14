@@ -11,7 +11,7 @@ $gradle = "C:\tools\gradle\gradle-9.2.1\bin\gradle.bat"
 $keyTool = Join-Path $javaHome "bin\keytool.exe"
 $zipAlign = Join-Path $androidHome "build-tools\36.1.0\zipalign.exe"
 $apkSigner = Join-Path $androidHome "build-tools\36.1.0\apksigner.bat"
-$signingDir = "C:\tools\TabletDisplay\signing"
+$signingDir = Join-Path $projectRoot "signing"
 $keyStore = Join-Path $signingDir "TabletDisplayRelease.p12"
 $passwordFile = Join-Path $signingDir "keystore-password.txt"
 $unsignedApk = Join-Path $projectRoot "app\build\outputs\apk\release\app-release-unsigned.apk"
@@ -72,8 +72,16 @@ if ($LASTEXITCODE -ne 0) { throw "APK signing failed with exit code $LASTEXITCOD
 Remove-Item -LiteralPath $alignedApk -Force
 & $apkSigner verify --verbose --print-certs $releaseApk
 if ($LASTEXITCODE -ne 0) { throw "APK signature verification failed." }
-$hash = Get-FileHash -Algorithm SHA256 -LiteralPath $releaseApk
+$stream = [IO.File]::OpenRead($releaseApk)
+$hasher = [Security.Cryptography.SHA256]::Create()
+try {
+    $hash = (($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("X2") }) -join "")
+}
+finally {
+    $hasher.Dispose()
+    $stream.Dispose()
+}
 Write-Output "Android release: $releaseApk"
-Write-Output "SHA256: $($hash.Hash)"
+Write-Output "SHA256: $hash"
 Write-Output "Signing key: $keyStore"
 Write-Output "Back up the signing key and password file to keep future APK upgrades compatible."
