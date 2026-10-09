@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "android: assemble debug",
+      "type": "process",
+      "command": "${workspaceFolder}\\build.cmd",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$gradle"
+    },
+    {
+      "label": "android: unit tests",
+      "type": "process",
+      "command": "${workspaceFolder}\\test.cmd",
+      "group": "test",
+      "problemMatcher": "$gradle"
+    },
+    {
+      "label": "android: install debug",
+      "type": "process",
+      "command": "C:\\tools\\android\\sdk\\platform-tools\\adb.exe",
+      "args": ["install", "-r", "${workspaceFolder}\\app\\build\\outputs\\apk\\debug\\app-debug.apk"],
+      "dependsOn": "android: assemble debug",
+      "problemMatcher": []
+    },
+    {
+      "label": "android: launch",
+      "type": "process",
+      "command": "C:\\tools\\android\\sdk\\platform-tools\\adb.exe",
+      "args": ["shell", "am", "start", "-W", "-n", "com.tabletdisplay/.MainActivity"],
+      "dependsOn": "android: install debug",
+      "problemMatcher": []
+    }
+  ]
+}

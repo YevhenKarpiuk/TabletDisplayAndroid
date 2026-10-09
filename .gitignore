@@ -1,0 +1,17 @@
+.gradle/
+.idea/
+.kotlin/
+local.properties
+build/
+app/build/
+dist/
+captures/
+signing/
+*.iml
+*.log
+
+*.pfx
+*.p12
+*.jks
+*.keystore
+*-password.txt
