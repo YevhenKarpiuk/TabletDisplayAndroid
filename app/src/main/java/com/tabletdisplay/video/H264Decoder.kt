@@ -41,7 +41,19 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             config.fpsNumerator,
             config.fpsDenominator
         )
-        startCodec(config, softwareDecoderName = null)
+        try {
+            startCodec(config, softwareDecoderName = null)
+        } catch (exception: IllegalArgumentException) {
+            // The hardware decoder refuses sizes beyond its limits (for example 2400x1080 on a
+            // decoder limited to 1920x1088, when Windows ignores the reported limit).
+            val softwareDecoder = findSoftwareDecoderName() ?: throw exception
+            Log.w(TAG, "Hardware decoder rejected ${config.width}x${config.height}", exception)
+            startCodec(config, softwareDecoder)
+        } catch (exception: IllegalStateException) {
+            val softwareDecoder = findSoftwareDecoderName() ?: throw exception
+            Log.w(TAG, "Hardware decoder rejected ${config.width}x${config.height}", exception)
+            startCodec(config, softwareDecoder)
+        }
     }
 
     private fun startCodec(config: VideoConfig, softwareDecoderName: String?) {
