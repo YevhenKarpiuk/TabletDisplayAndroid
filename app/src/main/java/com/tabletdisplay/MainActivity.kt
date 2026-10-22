@@ -1,6 +1,7 @@
 package com.tabletdisplay
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -18,6 +19,7 @@ import com.tabletdisplay.transport.ServerStatus
 import com.tabletdisplay.transport.TabletDisplayServer
 import com.tabletdisplay.ui.DisplaySurface
 import com.tabletdisplay.video.H264Decoder
+import com.tabletdisplay.video.VideoConfig
 
 @Suppress("DEPRECATION")
 class MainActivity : Activity(), SurfaceHolder.Callback {
@@ -26,6 +28,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var statusView: TextView
     private var server: TabletDisplayServer? = null
     private var activityStarted = false
+    private var lastError: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,28 +134,33 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun startServerIfReady() {
         if (!activityStarted || !displaySurface.holder.surface.isValid || server != null) return
         val displayMode = windowManager.defaultDisplay.mode
-        val width = displaySurface.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-        val height = displaySurface.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
-        val maximumDimension = maxOf(displayMode.physicalWidth, displayMode.physicalHeight)
         val rotation = when (windowManager.defaultDisplay.rotation) {
             Surface.ROTATION_90 -> 90
             Surface.ROTATION_180 -> 180
             Surface.ROTATION_270 -> 270
             else -> 0
         }
+        // Windows derives the virtual monitor modes and their aspect ratio from the panel
+        // resolution; physical sizes are given for the natural orientation.
+        val sideways = rotation == 90 || rotation == 270
+        val width = if (sideways) displayMode.physicalHeight else displayMode.physicalWidth
+        val height = if (sideways) displayMode.physicalWidth else displayMode.physicalHeight
+        val maximumDimension = maxOf(width, height)
+        val decoderLimits = H264Decoder.maximumFrameSize() ?: (maximumDimension to maximumDimension)
         val displayInfo = AndroidDisplayInfo(
             width = width,
             height = height,
             densityDpi = resources.displayMetrics.densityDpi,
             refreshRateMilliHz = (displayMode.refreshRate * 1_000f).toInt(),
-            maxAvcWidth = maximumDimension,
-            maxAvcHeight = maximumDimension,
+            maxAvcWidth = decoderLimits.first,
+            maxAvcHeight = decoderLimits.second,
             maxAvcFps = 60,
             profileMask = 0x07,
             rotation = rotation
         )
         val decoder = H264Decoder(displaySurface.holder.surface)
-        server = TabletDisplayServer(displayInfo, decoder, ::showStatus).also { it.start() }
+        server = TabletDisplayServer(displayInfo, decoder, ::showStatus, ::lockOrientation)
+            .also { it.start() }
     }
 
     private fun stopServer() {
@@ -160,19 +168,39 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         server = null
     }
 
+    // The Windows display orientation decides the tablet orientation, so the video is never
+    // stretched across a Surface of the other aspect ratio.
+    private fun lockOrientation(config: VideoConfig) {
+        runOnUiThread {
+            val orientation = if (config.width >= config.height) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+            if (requestedOrientation != orientation) requestedOrientation = orientation
+        }
+    }
+
     private fun showStatus(status: ServerStatus, detail: String?) {
         runOnUiThread {
             val streaming = status == ServerStatus.STREAMING
             blackoutView.visibility = if (streaming) View.GONE else View.VISIBLE
             statusView.visibility = if (streaming) View.GONE else View.VISIBLE
-            statusView.text = when (status) {
+            when (status) {
+                ServerStatus.ERROR -> lastError = getString(R.string.status_error, detail ?: "")
+                ServerStatus.STREAMING -> lastError = null
+                else -> Unit
+            }
+            val text = when (status) {
                 ServerStatus.LISTENING -> getString(R.string.status_waiting)
                 ServerStatus.CONNECTED -> getString(R.string.status_connected)
                 ServerStatus.READY -> getString(R.string.status_ready)
                 ServerStatus.STREAMING -> getString(R.string.status_streaming)
-                ServerStatus.ERROR -> getString(R.string.status_error, detail ?: "")
+                ServerStatus.ERROR -> null
                 ServerStatus.STOPPED -> getString(R.string.status_stopped)
             }
+            // Keep the last failure visible while the server waits for the next connection.
+            statusView.text = listOfNotNull(text, lastError).joinToString("\n")
         }
     }
 }

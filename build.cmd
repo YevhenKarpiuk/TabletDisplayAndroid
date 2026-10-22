@@ -8,5 +8,5 @@ set "PATH=%JAVA_HOME%\bin;%ANDROID_HOME%\platform-tools;%PATH%"
 set "GRADLE_CMD=C:\tools\gradle\gradle-9.2.1\bin\gradle.bat"
 if not exist "%GRADLE_CMD%" set "GRADLE_CMD=%~dp0gradlew.bat"
 
-call "%GRADLE_CMD%" --no-daemon :app:assembleDebug %*
+call "%GRADLE_CMD%" --no-daemon -p "%~dp0." :app:assembleDebug %*
 exit /b %errorlevel%

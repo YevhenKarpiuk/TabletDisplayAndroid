@@ -37,7 +37,8 @@ enum class ProtocolErrorKind {
     UNKNOWN_CRITICAL_TYPE,
     PAYLOAD_TOO_LARGE,
     INVALID_PAYLOAD,
-    SEQUENCE_GAP
+    SEQUENCE_GAP,
+    UNEXPECTED_MESSAGE
 }
 
 class ProtocolException(
@@ -206,10 +207,7 @@ object WireProtocol {
                 val csdLength = u32(payload, 24)
                 requirePayload(u32(payload, 0) != 0L && u32(payload, 4) != 0L, "VIDEO_CONFIG ids")
                 requirePayload(
-                    (width == 1280 && height == 800) ||
-                        (width == 800 && height == 1280) ||
-                        (width == 1920 && height == 1200) ||
-                        (width == 1200 && height == 1920),
+                    isValidVideoDimension(width) && isValidVideoDimension(height),
                     "VIDEO_CONFIG mode"
                 )
                 requirePayload(
@@ -300,6 +298,11 @@ object WireProtocol {
             }
         }
     }
+
+    /** Even dimension in 128..4096, as protocol section 5.4 requires for VIDEO_CONFIG. */
+    fun isValidVideoDimension(value: Int): Boolean =
+        value in ProtocolConstants.MIN_VIDEO_DIMENSION..ProtocolConstants.MAX_VIDEO_DIMENSION &&
+            value % 2 == 0
 
     private fun validateFlags(header: WireHeader) {
         val known = MessageType.fromCode(header.messageType)

@@ -4,7 +4,11 @@ import com.tabletdisplay.input.NormalizedTouchEvent
 import com.tabletdisplay.input.TouchAction
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.io.File
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HandshakeProtocolTest {
@@ -73,6 +77,65 @@ class HandshakeProtocolTest {
         assertEquals(7, payload.int)
         assertEquals(19L, payload.long)
         assertEquals(0, payload.int)
+    }
+
+    @Test
+    fun requestKeyframeMatchesGoldenVector() {
+        val message = HandshakeProtocol.createRequestKeyframe(
+            sequence = 3,
+            timestampUs = 1_000_500,
+            streamId = 1,
+            configId = 1,
+            lastFrameId = 0,
+            reason = 1
+        )
+        assertArrayEquals(golden("request_keyframe.hex"), encode(message))
+    }
+
+    @Test
+    fun errorMatchesGoldenVector() {
+        val message = HandshakeProtocol.createError(
+            sequence = 6,
+            timestampUs = 1_000_900,
+            code = 7,
+            severity = 3,
+            text = "unsupported codec",
+            offendingType = MessageType.VIDEO_CONFIG.code,
+            offendingSequence = 2
+        )
+        assertArrayEquals(golden("error.hex"), encode(message))
+        assertEquals("unsupported codec", HandshakeProtocol.parseErrorText(message))
+    }
+
+    @Test
+    fun errorTextIsTruncatedToValidUtf8() {
+        val message = HandshakeProtocol.createError(1, 1, 8, 3, "ж".repeat(600))
+        WireProtocol.validatePayload(message.header, message.payload)
+        assertEquals(1_024, HandshakeProtocol.parseErrorText(message).toByteArray().size)
+    }
+
+    @Test
+    fun videoConfigAcceptsAnyEvenSizeInRange() {
+        for (size in listOf(128, 480, 600, 640, 960, 1200, 1920, 2560, 4096)) {
+            assertTrue(WireProtocol.isValidVideoDimension(size))
+        }
+        for (size in listOf(126, 601, 4098)) {
+            assertFalse(WireProtocol.isValidVideoDimension(size))
+        }
+    }
+
+    private fun encode(message: WireMessage): ByteArray =
+        WireProtocol.encodeMessage(message.header, message.payload)
+
+    private fun golden(name: String): ByteArray {
+        var directory: File? = File("").absoluteFile
+        while (directory != null && !File(directory, "protocol/golden").isDirectory) {
+            directory = directory.parentFile
+        }
+        val text = File(checkNotNull(directory), "protocol/golden/$name").readText()
+        return text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+            .map { it.toInt(16).toByte() }
+            .toByteArray()
     }
 
     private fun helloMessage(capabilities: Long = ProtocolCapabilities.ALL_V1): WireMessage {

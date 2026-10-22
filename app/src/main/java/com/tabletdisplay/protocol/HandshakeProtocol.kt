@@ -164,6 +164,69 @@ object HandshakeProtocol {
         return message(MessageType.TOUCH, sequence, timestampUs, payload)
     }
 
+    fun createRequestKeyframe(
+        sequence: Long,
+        timestampUs: Long,
+        streamId: Long,
+        configId: Long,
+        lastFrameId: Long,
+        reason: Int
+    ): WireMessage {
+        require(streamId in 1..0xFFFF_FFFFL && configId in 1..0xFFFF_FFFFL)
+        require(lastFrameId >= 0 && reason in 1..5)
+        val payload = buffer(24).apply {
+            putInt(streamId.toInt())
+            putInt(configId.toInt())
+            putLong(lastFrameId)
+            putShort(reason.toShort())
+            putShort(0)
+            putInt(0)
+        }.array()
+        return message(MessageType.REQUEST_KEYFRAME, sequence, timestampUs, payload)
+    }
+
+    fun createError(
+        sequence: Long,
+        timestampUs: Long,
+        code: Int,
+        severity: Int,
+        text: String,
+        offendingType: Int = 0,
+        offendingSequence: Long = 0
+    ): WireMessage {
+        require(code in 1..10 && severity in 1..3)
+        val textBytes = truncateUtf8(text, ProtocolConstants.MAX_ERROR_TEXT_SIZE)
+        val payload = buffer(20 + textBytes.size).apply {
+            putShort(code.toShort())
+            put(severity.toByte())
+            put(0)
+            putShort(offendingType.toShort())
+            putShort(0)
+            putLong(offendingSequence)
+            putShort(textBytes.size.toShort())
+            putShort(0)
+            put(textBytes)
+        }.array()
+        return message(MessageType.ERROR, sequence, timestampUs, payload)
+    }
+
+    fun parseErrorText(message: WireMessage): String {
+        require(message.header.messageType == MessageType.ERROR.code)
+        val length = buffer(message.payload).getShort(16).toInt() and 0xFFFF
+        return String(message.payload, 20, length, Charsets.UTF_8)
+    }
+
+    private fun truncateUtf8(text: String, maxBytes: Int): ByteArray {
+        var end = text.length
+        var bytes = text.toByteArray(Charsets.UTF_8)
+        while (bytes.size > maxBytes && end > 0) {
+            end--
+            if (end > 0 && Character.isLowSurrogate(text[end])) end--
+            bytes = text.substring(0, end).toByteArray(Charsets.UTF_8)
+        }
+        return bytes
+    }
+
     private fun message(
         type: MessageType,
         sequence: Long,

@@ -3,6 +3,7 @@ package com.tabletdisplay.video
 import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import com.tabletdisplay.protocol.ProtocolConstants
@@ -13,13 +14,17 @@ class H264Decoder(private val surface: Surface) : VideoSink {
     private val outputInfo = MediaCodec.BufferInfo()
     private var hasQueuedInput = false
     private var configuration: VideoConfig? = null
-    private var usingSoftwareDecoder = false
+    private var softwareDecoderName: String? = null
     private var sourceTimestampOriginUs: Long? = null
     private var localTimestampOriginUs = 0L
     private var renderLeadTimeUs = 0L
+    private var outputWaitUs = 0L
+    private var lastOutputRealtimeMs = 0L
+    private var released = false
 
     @Synchronized
     override fun configure(config: VideoConfig) {
+        check(!released) { "Decoder is released" }
         require(config.width > 0 && config.height > 0)
         require(config.fpsNumerator > 0 && config.fpsDenominator > 0)
         releaseCodec()
@@ -29,6 +34,7 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             config.fpsNumerator,
             config.fpsDenominator
         )
+        outputWaitUs = outputWaitTimeUs(config.fpsNumerator, config.fpsDenominator)
         startCodec(config, softwareDecoderName = null)
     }
 
@@ -53,15 +59,20 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         val decoder = if (softwareDecoderName == null) {
             MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         } else {
-            Log.i(TAG, "Falling back to software AVC decoder: $softwareDecoderName")
+            Log.i(TAG, "Using software AVC decoder: $softwareDecoderName")
             MediaCodec.createByCodecName(softwareDecoderName)
         }
-        codec = decoder.apply {
-            configure(format, surface, null, 0)
-            start()
+        try {
+            decoder.configure(format, surface, null, 0)
+            decoder.start()
+        } catch (exception: Exception) {
+            decoder.release()
+            throw exception
         }
+        codec = decoder
         hasQueuedInput = false
-        usingSoftwareDecoder = softwareDecoderName != null
+        this.softwareDecoderName = softwareDecoderName
+        lastOutputRealtimeMs = SystemClock.elapsedRealtime()
     }
 
     @Synchronized
@@ -73,38 +84,37 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         keyFrame: Boolean,
         discontinuity: Boolean
     ) {
-        var current = checkNotNull(codec) { "Decoder is not configured" }
+        val current = checkNotNull(codec) { "Decoder is not configured" }
         val localPresentationTimeUs = mapPresentationTimeUs(presentationTimeUs)
-        if (queueAndRender(
-                current,
-                bytes,
-                offset,
-                length,
-                localPresentationTimeUs,
-                discontinuity
-            )
-        ) {
-            return
+        // Frames skipped while waiting for a recovery IDR are not a decoder stall.
+        if (discontinuity) lastOutputRealtimeMs = SystemClock.elapsedRealtime()
+        val rendered = try {
+            queueAndRender(current, bytes, offset, length, localPresentationTimeUs, discontinuity)
+        } catch (exception: IllegalStateException) {
+            // MediaCodec.CodecException is an IllegalStateException as well.
+            restart(softwareDecoderName, "Decoder error", exception)
         }
 
-        val softwareDecoder = softwareDecoderName()
-        check(!usingSoftwareDecoder && softwareDecoder != null) {
-            "Decoder produced no output frame"
+        val now = SystemClock.elapsedRealtime()
+        if (rendered) {
+            lastOutputRealtimeMs = now
+        } else if (now - lastOutputRealtimeMs > NO_OUTPUT_FALLBACK_MS) {
+            // Some hardware decoders accept input but never produce frames for a stream
+            // they cannot handle. Switch to the platform software decoder when one exists.
+            restart(
+                softwareDecoderName ?: findSoftwareDecoderName(),
+                "Decoder produced no output frame",
+                null
+            )
         }
-        val config = checkNotNull(configuration)
+    }
+
+    private fun restart(softwareDecoder: String?, reason: String, cause: Exception?): Nothing {
+        val config = checkNotNull(configuration) { "Decoder is not configured" }
+        Log.w(TAG, "$reason; restarting decoder", cause)
         releaseCodec()
         startCodec(config, softwareDecoder)
-        current = checkNotNull(codec)
-        check(
-            queueAndRender(
-                current,
-                bytes,
-                offset,
-                length,
-                localPresentationTimeUs,
-                discontinuity = false
-            )
-        ) { "Software decoder produced no output frame" }
+        throw DecoderRecoveryException(reason, cause)
     }
 
     private fun queueAndRender(
@@ -115,25 +125,37 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         presentationTimeUs: Long,
         discontinuity: Boolean
     ): Boolean {
+        var rendered = false
         if (discontinuity && hasQueuedInput) {
             current.flush()
+            hasQueuedInput = false
         }
-        val inputIndex = current.dequeueInputBuffer(INPUT_TIMEOUT_US)
-        check(inputIndex >= 0) { "Decoder input buffer timeout" }
+        val deadline = SystemClock.elapsedRealtime() + INPUT_TIMEOUT_MS
+        var inputIndex = current.dequeueInputBuffer(0)
+        while (inputIndex < 0) {
+            // Output buffers that are not released keep the decoder from accepting input.
+            rendered = drainOutput(current, waitUs = 0) || rendered
+            check(SystemClock.elapsedRealtime() < deadline) { "Decoder input buffer timeout" }
+            inputIndex = current.dequeueInputBuffer(INPUT_POLL_US)
+        }
         val input = checkNotNull(current.getInputBuffer(inputIndex))
         input.clear()
-        check(length <= input.remaining()) { "Access unit exceeds decoder input buffer" }
+        require(length <= input.remaining()) { "Access unit exceeds decoder input buffer" }
         input.put(bytes, offset, length)
         current.queueInputBuffer(inputIndex, 0, length, presentationTimeUs, 0)
         hasQueuedInput = true
-        return drainOutput(current, waitForFrame = true)
+        // Wait at most one frame interval; a later frame drains anything decoded after that.
+        return drainOutput(current, waitUs = outputWaitUs) || rendered
     }
 
     @Synchronized
     override fun signalEndOfStream(presentationTimeUs: Long) {
         val current = codec ?: return
-        val inputIndex = current.dequeueInputBuffer(INPUT_TIMEOUT_US)
-        check(inputIndex >= 0) { "Decoder EOS input buffer timeout" }
+        val inputIndex = current.dequeueInputBuffer(INPUT_TIMEOUT_MS * 1_000L)
+        if (inputIndex < 0) {
+            Log.w(TAG, "Decoder EOS input buffer timeout")
+            return
+        }
         current.queueInputBuffer(
             inputIndex,
             0,
@@ -141,7 +163,7 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             mapPresentationTimeUs(presentationTimeUs),
             MediaCodec.BUFFER_FLAG_END_OF_STREAM
         )
-        drainOutput(current, waitForFrame = false)
+        drainOutput(current, waitUs = 0)
     }
 
     private fun mapPresentationTimeUs(sourceTimestampUs: Long): Long {
@@ -155,11 +177,10 @@ class H264Decoder(private val surface: Surface) : VideoSink {
     }
 
     @Suppress("DEPRECATION")
-    private fun drainOutput(current: MediaCodec, waitForFrame: Boolean): Boolean {
-        var shouldWait = waitForFrame
+    private fun drainOutput(current: MediaCodec, waitUs: Long): Boolean {
+        var timeoutUs = waitUs
         var rendered = false
         while (true) {
-            val timeoutUs = if (shouldWait) OUTPUT_TIMEOUT_US else 0
             when (val outputIndex = current.dequeueOutputBuffer(outputInfo, timeoutUs)) {
                 MediaCodec.INFO_TRY_AGAIN_LATER -> return rendered
                 MediaCodec.INFO_OUTPUT_FORMAT_CHANGED,
@@ -169,40 +190,44 @@ class H264Decoder(private val surface: Surface) : VideoSink {
                     // the pixels live in the Surface rather than in a ByteBuffer.
                     val isFrame = outputInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
                         outputInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM == 0
-                    if (isFrame) {
-                        // Input already arrives at the source cadence. Rendering on the next
-                        // display refresh avoids clock-drift between Windows timestamps and
-                        // Android's monotonic clock from accumulating queued Surface frames.
-                        current.releaseOutputBuffer(outputIndex, true)
-                    } else {
-                        current.releaseOutputBuffer(outputIndex, false)
-                    }
+                    // Input already arrives at the source cadence. Rendering on the next
+                    // display refresh avoids clock-drift between Windows timestamps and
+                    // Android's monotonic clock from accumulating queued Surface frames.
+                    current.releaseOutputBuffer(outputIndex, isFrame)
                     rendered = rendered || isFrame
-                    shouldWait = false
+                    timeoutUs = 0
                 }
             }
         }
     }
 
+    /** Releases the codec of the finished connection; the decoder can be configured again. */
     @Synchronized
-    override fun close() {
+    override fun reset() {
         releaseCodec()
         configuration = null
         sourceTimestampOriginUs = null
+    }
+
+    /** Releases the codec permanently; called before the output Surface is destroyed. */
+    @Synchronized
+    override fun close() {
+        released = true
+        reset()
     }
 
     private fun releaseCodec() {
         val current = codec
         codec = null
         hasQueuedInput = false
-        usingSoftwareDecoder = false
+        softwareDecoderName = null
         if (current != null) {
             runCatching { current.stop() }
             current.release()
         }
     }
 
-    private fun softwareDecoderName(): String? =
+    private fun findSoftwareDecoderName(): String? =
         MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
             .asSequence()
             .filterNot { it.isEncoder }
@@ -258,13 +283,31 @@ class H264Decoder(private val surface: Surface) : VideoSink {
     }
 
     companion object {
+        /** Largest AVC frame of the decoder that createDecoderByType picks, or null if unknown. */
+        fun maximumFrameSize(): Pair<Int, Int>? = runCatching {
+            val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            val name = codecs.findDecoderForFormat(
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 800)
+            ) ?: return null
+            val capabilities = codecs.codecInfos.first { it.name == name }
+                .getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                .videoCapabilities ?: return null
+            capabilities.supportedWidths.upper to capabilities.supportedHeights.upper
+        }.getOrNull()
+
         private const val TAG = "H264Decoder"
-        private const val INPUT_TIMEOUT_US = 5_000_000L
-        private const val OUTPUT_TIMEOUT_US = 2_000_000L
+        private const val INPUT_TIMEOUT_MS = 250L
+        private const val INPUT_POLL_US = 2_000L
+        private const val NO_OUTPUT_FALLBACK_MS = 2_000L
     }
 }
 
 internal fun renderLeadTimeUs(fpsNumerator: Int, fpsDenominator: Int): Long {
     require(fpsNumerator > 0 && fpsDenominator > 0)
     return 1_000_000L * fpsDenominator / fpsNumerator / 2L
+}
+
+internal fun outputWaitTimeUs(fpsNumerator: Int, fpsDenominator: Int): Long {
+    require(fpsNumerator > 0 && fpsDenominator > 0)
+    return 1_000_000L * fpsDenominator / fpsNumerator
 }

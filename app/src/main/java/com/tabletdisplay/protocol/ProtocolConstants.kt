@@ -11,6 +11,8 @@ object ProtocolConstants {
     const val MAX_PAYLOAD_SIZE = MAX_ACCESS_UNIT_SIZE + 32
     const val MAX_CSD_SIZE = 64 * 1024
     const val MAX_ERROR_TEXT_SIZE = 1024
+    const val MIN_VIDEO_DIMENSION = 128
+    const val MAX_VIDEO_DIMENSION = 4096
     const val HANDSHAKE_TIMEOUT_MS = 5_000
 
     val MAGIC = byteArrayOf(0x54, 0x44, 0x53, 0x31)
