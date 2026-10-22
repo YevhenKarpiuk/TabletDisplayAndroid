@@ -184,6 +184,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun showStatus(status: ServerStatus, detail: String?) {
         runOnUiThread {
             val streaming = status == ServerStatus.STREAMING
+            // The screen stays on while Windows streams to it. Windows ends the stream when its
+            // displays turn off, the session locks or the connection is lost; then the device
+            // may sleep on its own timeout again.
+            displaySurface.keepScreenOn = streaming
             blackoutView.visibility = if (streaming) View.GONE else View.VISIBLE
             statusView.visibility = if (streaming) View.GONE else View.VISIBLE
             when (status) {
