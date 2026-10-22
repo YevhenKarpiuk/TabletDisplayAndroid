@@ -5,7 +5,7 @@ Android-приёмник для использования планшета ка
 - Парный проект: `C:\Users\ka\Documents\prog\c-plus-plus\TabletDisplayWindows`.
 - Устройство MVP: Lenovo TB-X606F, Android 10, 1920×1200/1200×1920@60. `DISPLAY_INFO` передаёт физическое разрешение панели и пределы AVC-декодера; Windows выбирает режим = разрешение планшета / 1–4.
 - Стек: Kotlin, Android SDK 36, minSdk 26, Gradle 9.2.1, JDK 17, `SurfaceView`, `MediaCodec`.
-- Сеть: только `127.0.0.1:27183`; Windows подключается через `adb forward`; protocol v1 в `doc/PROTOCOL.md`.
+- Сеть: USB — `127.0.0.1:27183` через `adb forward`; Wi-Fi — TCP `27185` на всех интерфейсах, NSD `_tabletdisplay._tcp` (TXT `id`), сопряжение с диалогом кода, AES-256-GCM (`wifi/`, PROTOCOL.md §10). Один сеанс одновременно, остальным `HELLO_ACK BUSY`. Ключи сопряжения — в приватных SharedPreferences.
 - Команды: `build.cmd`, `test.cmd`, `release.cmd`; release APK — `dist\TabletDisplayAndroid-0.1.2.apk`.
 - Готово: loopback server/relisten, strict parser/session, AVC MediaCodec → Surface с немедленным выводом на ближайшей развёртке, чёрный экран вне streaming, экран не гаснет только во время streaming, асинхронная bounded-очередь `DOWN/MOVE/UP/CANCEL` по тому же TCP-сеансу.
 - Lenovo TB-X606F: виртуальный дисплей 1280×800@60 декодируется аппаратным `OMX.MTK.VIDEO.DECODER.AVC`; проверены tap/drag, разрыв соединения и автоматическое восстановление Host.

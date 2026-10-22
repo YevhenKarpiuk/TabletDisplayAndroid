@@ -3,6 +3,7 @@ package com.tabletdisplay.protocol
 object ProtocolConstants {
     const val LOOPBACK_ADDRESS = "127.0.0.1"
     const val PORT = 27183
+    const val WIFI_PORT = 27185
     const val VERSION_MAJOR = 1
     const val VERSION_MINOR = 0
     const val VERSION = VERSION_MAJOR

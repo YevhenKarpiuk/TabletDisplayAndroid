@@ -1,6 +1,7 @@
 package com.tabletdisplay
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Bundle
@@ -12,14 +13,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import com.tabletdisplay.protocol.AndroidDisplayInfo
+import com.tabletdisplay.protocol.ProtocolConstants
 import com.tabletdisplay.input.NormalizedTouchEvent
 import com.tabletdisplay.input.TouchAction
 import com.tabletdisplay.transport.ServerStatus
 import com.tabletdisplay.transport.TabletDisplayServer
+import com.tabletdisplay.transport.WifiOptions
 import com.tabletdisplay.ui.DisplaySurface
 import com.tabletdisplay.video.H264Decoder
 import com.tabletdisplay.video.VideoConfig
+import com.tabletdisplay.wifi.PairingConfirmation
+import com.tabletdisplay.wifi.WifiAdvertiser
+import com.tabletdisplay.wifi.WifiIdentity
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Suppress("DEPRECATION")
 class MainActivity : Activity(), SurfaceHolder.Callback {
@@ -29,6 +39,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var server: TabletDisplayServer? = null
     private var activityStarted = false
     private var lastError: String? = null
+    private var advertiser: WifiAdvertiser? = null
+    private var pairingDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -159,13 +171,53 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             rotation = rotation
         )
         val decoder = H264Decoder(displaySurface.holder.surface)
-        server = TabletDisplayServer(displayInfo, decoder, ::showStatus, ::lockOrientation)
+        val identity = WifiIdentity(this)
+        val wifiOptions = WifiOptions(
+            androidId = identity.id,
+            androidName = identity.name,
+            store = identity,
+            confirmation = PairingConfirmation(::confirmPairing),
+            onPaired = { windowsName ->
+                runOnUiThread {
+                    Toast.makeText(this, getString(R.string.pairing_done, windowsName), Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+        server = TabletDisplayServer(displayInfo, decoder, ::showStatus, ::lockOrientation, wifiOptions)
             .also { it.start() }
+        advertiser = WifiAdvertiser(this, identity, ProtocolConstants.WIFI_PORT).also { it.start() }
     }
 
     private fun stopServer() {
+        advertiser?.stop()
+        advertiser = null
+        pairingDialog?.dismiss()
+        pairingDialog = null
         server?.close()
         server = null
+    }
+
+    // Runs on a Wi-Fi connection thread: shows the comparison code and waits for the user.
+    private fun confirmPairing(windowsName: String, code: String): Boolean {
+        val decision = CountDownLatch(1)
+        val accepted = AtomicBoolean(false)
+        runOnUiThread {
+            if (isFinishing) {
+                decision.countDown()
+                return@runOnUiThread
+            }
+            pairingDialog?.dismiss()
+            pairingDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.pairing_title)
+                .setMessage(getString(R.string.pairing_message, windowsName, code))
+                .setPositiveButton(R.string.pairing_accept) { _, _ -> accepted.set(true) }
+                .setNegativeButton(R.string.pairing_reject, null)
+                .setOnDismissListener { decision.countDown() }
+                .show()
+        }
+        val decided = decision.await(PAIRING_DECISION_SECONDS, TimeUnit.SECONDS)
+        if (!decided) runOnUiThread { pairingDialog?.dismiss() }
+        return decided && accepted.get()
     }
 
     // The Windows display orientation decides the tablet orientation, so the video is never
@@ -206,5 +258,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             // Keep the last failure visible while the server waits for the next connection.
             statusView.text = listOfNotNull(text, lastError).joinToString("\n")
         }
+    }
+
+    companion object {
+        private const val PAIRING_DECISION_SECONDS = 120L
     }
 }

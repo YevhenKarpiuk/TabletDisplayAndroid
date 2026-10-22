@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TabletDisplay</string>
-    <string name="status_waiting">Ожидание USB-подключения</string>
-    <string name="status_connected">USB подключён, согласование…</string>
+    <string name="status_waiting">Ожидание подключения по USB или Wi-Fi</string>
+    <string name="status_connected">Компьютер подключён, согласование…</string>
     <string name="status_ready">Соединение готово</string>
     <string name="status_streaming">Видеопоток активен</string>
     <string name="status_error">Ошибка соединения: %1$s</string>
     <string name="status_stopped">Сервер остановлен</string>
+    <string name="pairing_title">Подключение по Wi-Fi</string>
+    <string name="pairing_message">Компьютер «%1$s» хочет подключаться к этому устройству по Wi-Fi.\n\nКод: %2$s\n\nПодтвердите, только если на компьютере показан такой же код.</string>
+    <string name="pairing_accept">Подтвердить</string>
+    <string name="pairing_reject">Отклонить</string>
+    <string name="pairing_done">Компьютер «%1$s» сопряжён</string>
 </resources>

@@ -46,6 +46,7 @@ object HandshakeProtocol {
     const val STATUS_OK = 0
     const val STATUS_UNSUPPORTED_VERSION = 1
     const val STATUS_MISSING_CAPABILITY = 2
+    const val STATUS_BUSY = 3
 
     fun parseHello(message: WireMessage): HostHello {
         require(message.header.messageType == MessageType.HELLO.code) {
