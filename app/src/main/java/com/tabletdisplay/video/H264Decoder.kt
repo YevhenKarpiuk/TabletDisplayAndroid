@@ -331,15 +331,15 @@ class H264Decoder(private val surface: Surface) : VideoSink {
 
     companion object {
         /**
-         * Largest AVC frame, as (long side, short side), that the decoder createDecoderByType
-         * picks can play in both orientations: the panel size divided by 1..4 the same way
-         * Windows derives its monitor modes. Null if the decoder cannot be queried.
+         * Per-axis upper bounds of the AVC decoder that createDecoderByType picks, or null if
+         * the decoder cannot be queried.
          *
-         * isSizeSupported checks the exact size against the decoder's area, block and
-         * alignment limits; the per-axis upper bounds alone can both reject and accept sizes
-         * the decoder handles differently, so they are only the last fallback.
+         * The exact-size check (isSizeSupported) is deliberately not used: decoders often
+         * declare less than they play. The TB-X606F decoder declares 1920x1088, so
+         * isSizeSupported rejects its own 1920x1200 panel, yet it streams that resolution;
+         * with can-swap-width-height its per-axis bounds admit 1920x1200.
          */
-        fun maximumFrameSize(panelWidth: Int, panelHeight: Int): Pair<Int, Int>? = runCatching {
+        fun maximumFrameSize(): Pair<Int, Int>? = runCatching {
             val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS)
             val name = codecs.findDecoderForFormat(
                 MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 800)
@@ -347,17 +347,6 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             val capabilities = codecs.codecInfos.first { it.name == name }
                 .getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
                 .videoCapabilities ?: return null
-            val longSide = maxOf(panelWidth, panelHeight)
-            val shortSide = minOf(panelWidth, panelHeight)
-            for (divisor in 1..4) {
-                val width = (longSide / divisor) and 1.inv()
-                val height = (shortSide / divisor) and 1.inv()
-                if (capabilities.isSizeSupported(width, height) &&
-                    capabilities.isSizeSupported(height, width)
-                ) {
-                    return width to height
-                }
-            }
             capabilities.supportedWidths.upper to capabilities.supportedHeights.upper
         }.getOrNull()
 

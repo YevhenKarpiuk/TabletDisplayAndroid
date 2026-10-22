@@ -146,8 +146,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val width = if (sideways) displayMode.physicalHeight else displayMode.physicalWidth
         val height = if (sideways) displayMode.physicalWidth else displayMode.physicalHeight
         val maximumDimension = maxOf(width, height)
-        val decoderLimits = H264Decoder.maximumFrameSize(width, height)
-            ?: (maximumDimension to maximumDimension)
+        val decoderLimits = H264Decoder.maximumFrameSize() ?: (maximumDimension to maximumDimension)
         val displayInfo = AndroidDisplayInfo(
             width = width,
             height = height,
