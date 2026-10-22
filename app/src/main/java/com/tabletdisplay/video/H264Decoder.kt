@@ -106,13 +106,21 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         keyFrame: Boolean,
         discontinuity: Boolean
     ) {
+        if (discontinuity && hasQueuedInput) {
+            // A fresh codec instead of flush(): in asynchronous mode input callbacks posted before
+            // flush() can still arrive afterwards with buffer indices that are no longer valid.
+            val config = checkNotNull(configuration) { "Decoder is not configured" }
+            val softwareDecoder = softwareDecoderName
+            releaseCodec()
+            startCodec(config, softwareDecoder)
+        }
         val current = checkNotNull(codec) { "Decoder is not configured" }
         val currentCallbacks = checkNotNull(callbacks)
         val localPresentationTimeUs = mapPresentationTimeUs(presentationTimeUs)
         // Frames skipped while waiting for a recovery IDR are not a decoder stall.
         if (discontinuity) currentCallbacks.resetStallTracking()
         try {
-            queueInput(current, currentCallbacks, bytes, offset, length, localPresentationTimeUs, discontinuity)
+            queueInput(current, currentCallbacks, bytes, offset, length, localPresentationTimeUs)
         } catch (exception: IllegalStateException) {
             // MediaCodec.CodecException is an IllegalStateException as well.
             restart(softwareDecoderName, "Decoder error", exception)
@@ -147,17 +155,9 @@ class H264Decoder(private val surface: Surface) : VideoSink {
         bytes: ByteArray,
         offset: Int,
         length: Int,
-        presentationTimeUs: Long,
-        discontinuity: Boolean
+        presentationTimeUs: Long
     ) {
         decoderCallbacks.error?.let { throw it }
-        if (discontinuity && hasQueuedInput) {
-            current.flush()
-            decoderCallbacks.inputBuffers.clear()
-            // In asynchronous mode flush() stops input callbacks until start() is called again.
-            current.start()
-            hasQueuedInput = false
-        }
         val inputIndex = decoderCallbacks.inputBuffers.poll(INPUT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             ?: throw decoderCallbacks.error ?: IllegalStateException("Decoder input buffer timeout")
         val input = checkNotNull(current.getInputBuffer(inputIndex))
@@ -330,8 +330,16 @@ class H264Decoder(private val surface: Surface) : VideoSink {
     }
 
     companion object {
-        /** Largest AVC frame of the decoder that createDecoderByType picks, or null if unknown. */
-        fun maximumFrameSize(): Pair<Int, Int>? = runCatching {
+        /**
+         * Largest AVC frame, as (long side, short side), that the decoder createDecoderByType
+         * picks can play in both orientations: the panel size divided by 1..4 the same way
+         * Windows derives its monitor modes. Null if the decoder cannot be queried.
+         *
+         * isSizeSupported checks the exact size against the decoder's area, block and
+         * alignment limits; the per-axis upper bounds alone can both reject and accept sizes
+         * the decoder handles differently, so they are only the last fallback.
+         */
+        fun maximumFrameSize(panelWidth: Int, panelHeight: Int): Pair<Int, Int>? = runCatching {
             val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS)
             val name = codecs.findDecoderForFormat(
                 MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 800)
@@ -339,6 +347,17 @@ class H264Decoder(private val surface: Surface) : VideoSink {
             val capabilities = codecs.codecInfos.first { it.name == name }
                 .getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
                 .videoCapabilities ?: return null
+            val longSide = maxOf(panelWidth, panelHeight)
+            val shortSide = minOf(panelWidth, panelHeight)
+            for (divisor in 1..4) {
+                val width = (longSide / divisor) and 1.inv()
+                val height = (shortSide / divisor) and 1.inv()
+                if (capabilities.isSizeSupported(width, height) &&
+                    capabilities.isSizeSupported(height, width)
+                ) {
+                    return width to height
+                }
+            }
             capabilities.supportedWidths.upper to capabilities.supportedHeights.upper
         }.getOrNull()
 
