@@ -3,6 +3,7 @@ package com.tabletdisplay
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -39,6 +40,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var server: TabletDisplayServer? = null
     private var activityStarted = false
     private var lastError: String? = null
+    // Windows asked the device to rotate with its sensor during the current session.
+    private var followSensor = false
+    private var streamLandscape: Boolean? = null
+    // The orientation DISPLAY_INFO of the running server describes.
+    private var serverLandscape = true
     private var advertiser: WifiAdvertiser? = null
     private var pairingDialog: AlertDialog? = null
 
@@ -157,6 +163,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val sideways = rotation == 90 || rotation == 270
         val width = if (sideways) displayMode.physicalHeight else displayMode.physicalWidth
         val height = if (sideways) displayMode.physicalWidth else displayMode.physicalHeight
+        serverLandscape = width >= height
         val maximumDimension = maxOf(width, height)
         val decoderLimits = H264Decoder.maximumFrameSize() ?: (maximumDimension to maximumDimension)
         val displayInfo = AndroidDisplayInfo(
@@ -183,9 +190,22 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
         )
-        server = TabletDisplayServer(displayInfo, decoder, ::showStatus, ::lockOrientation, wifiOptions)
+        server = TabletDisplayServer(
+            displayInfo, decoder, ::showStatus, ::lockOrientation, wifiOptions, ::applyOrientationPolicy
+        )
             .also { it.start() }
         advertiser = WifiAdvertiser(this, identity, ProtocolConstants.WIFI_PORT).also { it.start() }
+    }
+
+    // The same orientation test DISPLAY_INFO uses, so a restart never loops.
+    private fun isLandscapeNow(): Boolean {
+        val displayMode = windowManager.defaultDisplay.mode
+        val sideways = windowManager.defaultDisplay.rotation.let {
+            it == Surface.ROTATION_90 || it == Surface.ROTATION_270
+        }
+        val width = if (sideways) displayMode.physicalHeight else displayMode.physicalWidth
+        val height = if (sideways) displayMode.physicalWidth else displayMode.physicalHeight
+        return width >= height
     }
 
     private fun stopServer() {
@@ -220,17 +240,42 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         return decided && accepted.get()
     }
 
-    // The Windows display orientation decides the tablet orientation, so the video is never
-    // stretched across a Surface of the other aspect ratio.
+    // Windows sends its orientation policy before VIDEO_CONFIG.
+    private fun applyOrientationPolicy(lock: Boolean) {
+        runOnUiThread { followSensor = !lock }
+    }
+
+    // A locked device keeps the orientation of the stream, so the video is never stretched
+    // across a Surface of the other aspect ratio. A following device rotates with its sensor,
+    // ignoring its own auto-rotate setting; Windows matches the stream when the device turns.
     private fun lockOrientation(config: VideoConfig) {
         runOnUiThread {
-            val orientation = if (config.width >= config.height) {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            streamLandscape = config.width >= config.height
+            val orientation = when {
+                followSensor -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                config.width >= config.height -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             }
             if (requestedOrientation != orientation) requestedOrientation = orientation
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        restartServerIfTurned()
+    }
+
+    // A turned device restarts its server: DISPLAY_INFO then reports the new orientation, and
+    // Windows reconnects and rotates the monitor to match.
+    private fun restartServerIfTurned() {
+        if (server == null) return
+        val landscape = isLandscapeNow()
+        val reported = streamLandscape ?: serverLandscape
+        if (landscape == reported && landscape == serverLandscape) return
+        if (streamLandscape != null && !followSensor) return
+        streamLandscape = null
+        stopServer()
+        startServerIfReady()
     }
 
     private fun showStatus(status: ServerStatus, detail: String?) {
@@ -240,6 +285,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             // displays turn off, the session locks or the connection is lost; then the device
             // may sleep on its own timeout again.
             displaySurface.keepScreenOn = streaming
+            when (status) {
+                ServerStatus.CONNECTED -> followSensor = false
+                ServerStatus.LISTENING -> {
+                    // Between sessions the device rotates freely again.
+                    streamLandscape = null
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                    restartServerIfTurned()
+                }
+                else -> Unit
+            }
             blackoutView.visibility = if (streaming) View.GONE else View.VISIBLE
             statusView.visibility = if (streaming) View.GONE else View.VISIBLE
             when (status) {

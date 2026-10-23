@@ -15,6 +15,8 @@ enum class MessageType(val code: Int) {
     TOUCH(0x0020),
     PING(0x0030),
     PONG(0x0031),
+    // Optional (not CRITICAL): Windows hosts that predate it never send it.
+    ORIENTATION_POLICY(0x0040),
     ERROR(0x00FF);
 
     companion object {
@@ -279,6 +281,12 @@ object WireProtocol {
             MessageType.PING -> requirePayload(payload.size == 16, "PING size")
             MessageType.PONG -> requirePayload(payload.size == 24, "PONG size")
 
+            MessageType.ORIENTATION_POLICY -> {
+                requirePayload(payload.size == 8, "ORIENTATION_POLICY size")
+                requirePayload(u8(payload, 0) <= 1, "ORIENTATION_POLICY mode")
+                requirePayload((1 until 8).all { u8(payload, it) == 0 }, "ORIENTATION_POLICY reserved")
+            }
+
             MessageType.ERROR -> {
                 requirePayload(payload.size >= 20, "ERROR size")
                 val code = u16(payload, 0)
@@ -317,6 +325,17 @@ object WireProtocol {
                 throw ProtocolException(
                     ProtocolErrorKind.INVALID_FLAGS,
                     "Optional unknown type has flags"
+                )
+            }
+            return
+        }
+
+        // An optional message must stay skippable by peers that do not know it.
+        if (known == MessageType.ORIENTATION_POLICY) {
+            if (header.flags != 0) {
+                throw ProtocolException(
+                    ProtocolErrorKind.INVALID_FLAGS,
+                    "Optional message has flags"
                 )
             }
             return

@@ -64,7 +64,9 @@ class TabletDisplayServer(
     private val videoSink: VideoSink,
     private val onStatus: (ServerStatus, String?) -> Unit,
     private val onVideoConfig: (VideoConfig) -> Unit = {},
-    private val wifi: WifiOptions? = null
+    private val wifi: WifiOptions? = null,
+    // true: keep the orientation of the stream; false: rotate with the sensor.
+    private val onOrientationPolicy: (Boolean) -> Unit = {}
 ) : Closeable {
     @Volatile
     private var running = false
@@ -330,6 +332,7 @@ class TabletDisplayServer(
                             message
                         )
                     }
+                    MessageType.ORIENTATION_POLICY -> onOrientationPolicy(message.payload[0].toInt() == 1)
                     MessageType.ERROR -> throw HostReportedException(
                         HandshakeProtocol.parseErrorText(message).ifBlank { "Windows host error" }
                     )

@@ -23,7 +23,7 @@ class WireProtocolTest {
     fun goldenVectorsDecodeEncodeAndRejectAsSpecified() {
         val directory = goldenDirectory()
         val cases = loadManifest(directory)
-        assertEquals(14, cases.size)
+        assertEquals(15, cases.size)
 
         cases.forEach { vectorCase ->
             if (vectorCase.expectation == "VALID") {
